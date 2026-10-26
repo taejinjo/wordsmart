@@ -7,9 +7,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        @keyframes slideDown { from { opacity:0; transform: translate(-50%, -20px); } to { opacity:1; transform: translate(-50%, 0); } }
+        .toast-anim { animation: slideDown 0.4s ease-out, slideDown 0.4s reverse 2.6s forwards; }
+    </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
 
+    <!-- 이어하기 토스트 (JS로 동적 생성) -->
+    <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none"></div>
+
+    <!-- 상단 헤더 & 진도 바 -->
     <header class="w-full bg-slate-800 p-4 shadow-md sticky top-0 z-10">
         <div class="max-w-md mx-auto flex justify-between items-center mb-2">
             <h1 class="text-xl font-bold tracking-wider text-indigo-400">WORD SMART</h1>
@@ -20,12 +28,13 @@
         </div>
     </header>
 
+    <!-- 메인 학습 카드 영역 -->
     <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col justify-center items-center">
-        <div id="flashcard" onclick="toggleCard()" class="w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl cursor-pointer min-h- flex flex-col justify-between transition-transform transform active:scale-95">
+        <div id="flashcard" onclick="toggleCard()" class="w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl cursor-pointer min-h-[400px] flex flex-col justify-between transition-transform transform active:scale-95">
             <div>
                 <div class="flex justify-between items-center">
-                    <span id="card-index" class="text-xs font-semibold px-2.5 py-1 bg-indigo-900 text-indigo-300 rounded-full">DATA JSON</span>
-                    <button onclick="event.stopPropagation(); playPronunciation();" class="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white shadow transition">
+                    <span id="card-index" class="text-xs font-semibold px-2.5 py-1 bg-indigo-900 text-indigo-300 rounded-full">WORD SMART</span>
+                    <button onclick="event.stopPropagation(); playPronunciation();" class="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white shadow transition text-xs font-bold">
                         🔊 발음듣기
                     </button>
                 </div>
@@ -42,21 +51,28 @@
                     <p id="word-meaning" class="text-lg font-semibold text-slate-100">-</p>
                 </div>
                 <div>
-                    <!-- 수정된 부분: 예문 헤더에 버튼 추가 -->
                     <div class="flex justify-between items-center mb-1">
                         <span class="text-xs text-indigo-400 font-bold uppercase">예문</span>
-                        <button onclick="event.stopPropagation(); playExample();" class="text- px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-slate-300 border border-slate-600 transition">
+                        <button onclick="event.stopPropagation(); playExample();" class="text-[11px] px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-slate-300 border border-slate-600 transition font-medium">
                             🔊 예문듣기
                         </button>
                     </div>
-                    <p id="word-example" class="text-sm text-slate-300 italic mt-1">-</p>
+                    <p id="word-example" class="text-sm text-slate-300 italic mt-1 leading-relaxed">-</p>
                     <p id="word-example-kr" class="text-xs text-slate-400 mt-1">-</p>
                 </div>
             </div>
         </div>
-        <p class="text-xs text-slate-500 mt-3">💡 카드를 터치하면 카드가 반응합니다.</p>
+
+        <div class="flex items-center gap-3 mt-3">
+            <p class="text-xs text-slate-500">💡 카드를 터치하면 카드가 반응합니다.</p>
+            <span class="text-slate-600 text-xs">|</span>
+            <button onclick="resetProgress()" class="text-[11px] text-slate-500 hover:text-slate-300 underline">처음부터 다시</button>
+        </div>
+        
+        <p id="last-info" class="text-[11px] text-slate-600 mt-2 hidden"></p>
     </main>
 
+    <!-- 하단 네비게이션 컨트롤 -->
     <nav class="w-full bg-slate-800 p-4 border-t border-slate-700">
         <div class="max-w-md mx-auto flex justify-between gap-4">
             <button onclick="prevWord()" class="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-bold text-sm transition">이전 단어</button>
@@ -67,50 +83,108 @@
 
     <script>
         let wordsData = [];
-        let currentIndex = parseInt(localStorage.getItem('wordsmart_last_index')) || 0;
+        const saved = localStorage.getItem('wordsmart_last_index');
+        let currentIndex = saved ? parseInt(saved, 10) : 0;
+        if (isNaN(currentIndex) || currentIndex < 0) currentIndex = 0;
 
         async function loadWords() {
             try {
                 const response = await fetch('words.json');
+                if (!response.ok) throw new Error('fetch failed');
                 wordsData = await response.json();
-                if (currentIndex >= wordsData.length) currentIndex = 0;
-                updateCard();
             } catch (error) {
-                document.getElementById('word-title').innerText = "데이터 로드 실패";
-                document.getElementById('word-meaning').innerText = "words.json 파일 경로를 확인해주세요.";
+                console.log('words.json 로드 실패, 샘플 데이터 사용');
+                wordsData = [
+                    {"word":"abate","pron":"[əˈbeɪt]","pos":"v. 감소시키다","meaning":"약해지다, 감소하다","example":"The storm finally began to abate.","exampleKr":"폭풍이 마침내 잦아들기 시작했다."},
+                    {"word":"aberrant","pron":"[əˈberənt]","pos":"adj. 비정상적인","meaning":"정상에서 벗어난","example":"His aberrant behavior concerned his family.","exampleKr":"그의 비정상적인 행동은 가족을 걱정시켰다."},
+                    {"word":"abstain","pron":"[əbˈsteɪn]","pos":"v. 삼가다","meaning":"자제하다, 삼가다","example":"She decided to abstain from drinking alcohol.","exampleKr":"그녀는 술을 마시지 않기로 결심했다."}
+                ];
             }
+            
+            if (currentIndex >= wordsData.length) currentIndex = 0;
+            updateCard();
+
+            // 마지막 학습 위치부터 이어하기 안내
+            if (currentIndex > 0) {
+                const lastWord = localStorage.getItem('wordsmart_last_word') || wordsData[currentIndex].word;
+                showResumeToast(`${currentIndex + 1} / ${wordsData.length}번째, "${lastWord}"부터 이어서 시작`);
+                
+                const lastTime = localStorage.getItem('wordsmart_last_time');
+                if (lastTime) {
+                    const d = new Date(lastTime);
+                    document.getElementById('last-info').innerText = `마지막 학습: ${d.toLocaleString('ko-KR')} - ${lastWord}`;
+                    document.getElementById('last-info').classList.remove('hidden');
+                }
+            }
+        }
+
+        function showResumeToast(msg) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast-anim bg-indigo-600 text-white text-xs px-4 py-2.5 rounded-full shadow-xl font-medium whitespace-nowrap';
+            toast.innerText = `📚 ${msg}`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.remove(); }, 3000);
         }
 
         function updateCard() {
             if (wordsData.length === 0) return;
             const data = wordsData[currentIndex];
+            
             document.getElementById('word-title').innerText = data.word;
-            document.getElementById('word-발음').innerText = data.pron;
-            document.getElementById('word-pos').innerText = data.pos;
-            document.getElementById('word-meaning').innerText = data.meaning;
-            document.getElementById('word-example').innerText = `"${data.example}"`;
-            document.getElementById('word-example-kr').innerText = data.exampleKr;
+            document.getElementById('word-발음').innerText = data.pron || '';
+            document.getElementById('word-pos').innerText = data.pos || '';
+            document.getElementById('word-meaning').innerText = data.meaning || '-';
+            document.getElementById('word-example').innerText = data.example ? `"${data.example}"` : '-';
+            document.getElementById('word-example-kr').innerText = data.exampleKr || '';
+
             document.getElementById('progress-text').innerText = `${currentIndex + 1} / ${wordsData.length}`;
             document.getElementById('progress-bar').style.width = `${((currentIndex + 1) / wordsData.length) * 100}%`;
-            localStorage.setItem('wordsmart_last_index', currentIndex);
+
+            // 마지막 학습 위치 저장 (핵심 기능)
+            localStorage.setItem('wordsmart_last_index', currentIndex.toString());
+            localStorage.setItem('wordsmart_last_word', data.word);
+            localStorage.setItem('wordsmart_last_time', new Date().toISOString());
         }
 
         function nextWord() {
+            window.speechSynthesis.cancel();
             if (currentIndex < wordsData.length - 1) {
                 currentIndex++;
+                updateCard();
             } else {
-                alert("마지막 단어입니다! 처음으로 돌아갑니다.");
+                showResumeToast('마지막 단어입니다! 처음으로 돌아갑니다.');
                 currentIndex = 0;
+                updateCard();
             }
-            updateCard();
         }
-        function prevWord() { if (currentIndex > 0) { currentIndex--; updateCard(); } }
+
+        function prevWord() {
+            window.speechSynthesis.cancel();
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateCard();
+            }
+        }
+
         function markAsKnown() { nextWord(); }
         function toggleCard() { document.getElementById('flashcard').classList.toggle('border-indigo-500'); }
 
-        // 공통 TTS 함수
+        function resetProgress() {
+            if (confirm('학습 기록을 초기화하고 처음부터 시작할까요?')) {
+                localStorage.removeItem('wordsmart_last_index');
+                localStorage.removeItem('wordsmart_last_word');
+                localStorage.removeItem('wordsmart_last_time');
+                currentIndex = 0;
+                updateCard();
+                showResumeToast('처음부터 다시 시작합니다');
+                document.getElementById('last-info').classList.add('hidden');
+            }
+        }
+
+        // 공통 TTS
         function speak(text, lang = 'en-US', rate = 0.9) {
-            window.speechSynthesis.cancel(); // 기존 재생 중지
+            window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = lang;
             utterance.rate = rate;
@@ -122,7 +196,6 @@
             speak(wordsData[currentIndex].word, 'en-US', 0.9);
         }
 
-        // 새로 추가된 예문 읽기
         function playExample() {
             if (wordsData.length === 0) return;
             speak(wordsData[currentIndex].example, 'en-US', 0.9);
