@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Word Smart 학습 앱</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
+
+    <!-- 상단 헤더 & 진도 바 -->
+    <header class="w-full bg-slate-800 p-4 shadow-md sticky top-0 z-10">
+        <div class="max-w-md mx-auto flex justify-between items-center mb-2">
+            <h1 class="text-xl font-bold tracking-wider text-indigo-400">WORD SMART</h1>
+            <span id="progress-text" class="text-sm text-slate-400">0 / 0</span>
+        </div>
+        <div class="max-w-md mx-auto w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+            <div id="progress-bar" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%;"></div>
+        </div>
+    </header>
+
+    <!-- 메인 학습 카드 영역 -->
+    <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col justify-center items-center">
+        <div id="flashcard" onclick="toggleCard()" class="w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl cursor-pointer min-h-[380px] flex flex-col justify-between transition-transform transform active:scale-95">
+            <div>
+                <div class="flex justify-between items-center">
+                    <span id="card-index" class="text-xs font-semibold px-2.5 py-1 bg-indigo-900 text-indigo-300 rounded-full">DATA JSON</span>
+                    <button onclick="event.stopPropagation(); playPronunciation();" class="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white shadow transition">
+                        🔊 발음듣기
+                    </button>
+                </div>
+                <div class="mt-6 text-center">
+                    <h2 id="word-title" class="text-3xl font-extrabold text-white tracking-wide">불러오는 중...</h2>
+                    <p id="word-발음" class="text-sm text-indigo-300 mt-1"></p>
+                    <p id="word-pos" class="text-xs text-slate-400 italic mt-1"></p>
+                </div>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4 mt-4">
+                <div class="mb-2">
+                    <span class="text-xs text-indigo-400 font-bold uppercase">뜻</span>
+                    <p id="word-meaning" class="text-lg font-semibold text-slate-100">-</p>
+                </div>
+                <div>
+                    <span class="text-xs text-indigo-400 font-bold uppercase">예문</span>
+                    <p id="word-example" class="text-sm text-slate-300 italic mt-1">-</p>
+                    <p id="word-example-kr" class="text-xs text-slate-400 mt-1">-</p>
+                </div>
+            </div>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">💡 카드를 터치하면 카드가 반응합니다.</p>
+    </main>
+
+    <!-- 하단 네비게이션 컨트롤 -->
+    <nav class="w-full bg-slate-800 p-4 border-t border-slate-700">
+        <div class="max-w-md mx-auto flex justify-between gap-4">
+            <button onclick="prevWord()" class="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-bold text-sm transition">이전 단어</button>
+            <button onclick="markAsKnown()" class="px-4 bg-emerald-700 hover:bg-emerald-600 py-3 rounded-xl font-bold text-sm transition">암기완료</button>
+            <button onclick="nextWord()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold text-sm transition">다음 단어</button>
+        </div>
+    </nav>
+
+    <!-- 앱 로직 스크립트 -->
+    <script>
+        let wordsData = [];
+        let currentIndex = parseInt(localStorage.getItem('wordsmart_last_index')) || 0;
+
+        // JSON 데이터 비동기 로드
+        async function loadWords() {
+            try {
+                const response = await fetch('words.json');
+                wordsData = await response.json();
+                
+                if (currentIndex >= wordsData.length) currentIndex = 0;
+                updateCard();
+            } catch (error) {
+                document.getElementById('word-title').innerText = "데이터 로드 실패";
+                document.getElementById('word-meaning').innerText = "words.json 파일 경로를 확인해주세요.";
+            }
+        }
+
+        function updateCard() {
+            if (wordsData.length === 0) return;
+            const data = wordsData[currentIndex];
+            
+            document.getElementById('word-title').innerText = data.word;
+            document.getElementById('word-발음').innerText = data.pron;
+            document.getElementById('word-pos').innerText = data.pos;
+            document.getElementById('word-meaning').innerText = data.meaning;
+            document.getElementById('word-example').innerText = `"${data.example}"`;
+            document.getElementById('word-example-kr').innerText = data.exampleKr;
+
+            // 진도 표시 업데이트
+            document.getElementById('progress-text').innerText = `${currentIndex + 1} / ${wordsData.length}`;
+            const progressPercent = ((currentIndex + 1) / wordsData.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+
+            // 마지막 학습 위치 자동 저장
+            localStorage.setItem('wordsmart_last_index', currentIndex);
+        }
+
+        function nextWord() {
+            if (currentIndex < wordsData.length - 1) {
+                currentIndex++;
+                updateCard();
+            } else {
+                alert("마지막 단어입니다! 처음으로 돌아갑니다.");
+                currentIndex = 0;
+                updateCard();
+            }
+        }
+
+        function prevWord() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateCard();
+            }
+        }
+
+        function markAsKnown() {
+            nextWord();
+        }
+
+        function toggleCard() {
+            const card = document.getElementById('flashcard');
+            card.classList.toggle('border-indigo-500');
+        }
+
+        function playPronunciation() {
+            if (wordsData.length === 0) return;
+            const word = wordsData[currentIndex].word;
+            const utterance = new SpeechSynthesisUtterance(word);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // 앱 실행 시 데이터 로드 시작
+        window.onload = function() {
+            loadWords();
+        };
+    </script>
+</body>
+</html>
